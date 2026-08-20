@@ -86,7 +86,7 @@ static NSString *const kYYBaiduEndpoint = @"https://fanyi-api.baidu.com/api/tran
 
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:components.URL];
     request.timeoutInterval = 10.0;
-    [[NSURLSession sharedSession] dataTaskWithRequest:request
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             if (error) {
                 [self finishWithResult:nil error:error completion:completion];
@@ -117,7 +117,7 @@ static NSString *const kYYBaiduEndpoint = @"https://fanyi-api.baidu.com/api/tran
             } else {
                 [self finishWithResult:nil error:[self errorWithCode:4 message:@"百度返回空结果"] completion:completion];
             }
-        }] resume;
+        }] resume];
 }
 
 - (NSString *)baiduLangCode:(NSString *)canonical {
@@ -144,7 +144,7 @@ static NSString *const kYYBaiduEndpoint = @"https://fanyi-api.baidu.com/api/tran
     ];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:components.URL];
     request.timeoutInterval = 15.0;
-    [[NSURLSession sharedSession] dataTaskWithRequest:request
+    [[[NSURLSession sharedSession] dataTaskWithRequest:request
         completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             if (error) {
                 [self finishWithResult:nil error:error completion:completion];
@@ -156,7 +156,7 @@ static NSString *const kYYBaiduEndpoint = @"https://fanyi-api.baidu.com/api/tran
             } else {
                 [self finishWithResult:nil error:[self errorWithCode:2 message:@"翻译结果解析失败"] completion:completion];
             }
-        }] resume;
+        }] resume];
 }
 
 - (NSString *)googleLangCode:(NSString *)canonical {
@@ -190,6 +190,8 @@ static NSString *const kYYBaiduEndpoint = @"https://fanyi-api.baidu.com/api/tran
 
 #pragma mark - 工具
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 + (NSString *)md5:(NSString *)string {
     const char *cStr = [string UTF8String];
     unsigned char digest[CC_MD5_DIGEST_LENGTH];
@@ -200,6 +202,7 @@ static NSString *const kYYBaiduEndpoint = @"https://fanyi-api.baidu.com/api/tran
     }
     return hex;
 }
+#pragma clang diagnostic pop
 
 - (void)finishWithResult:(NSString *)result error:(NSError *)error completion:(YueyuTranslateCompletion)completion {
     if (!completion) return;
