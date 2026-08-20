@@ -14,6 +14,11 @@
 #import "YueyuTranslator.h"
 #import "YueyuSettings.h"
 
+// QQInputAccessoryView 头文件声明（逆向头文件里是 UICollectionView 子类）
+@interface QQInputAccessoryView : UICollectionView
+@end
+
+
 #pragma mark - 工具函数
 
 static UIView *YYFindSubview(UIView *view, Class cls) {
@@ -36,12 +41,26 @@ static UITextView *YYFirstResponderTextView(UIView *view) {
     return nil;
 }
 
+static UIWindow *YYKeyWindow(void) {
+    if (@available(iOS 13.0, *)) {
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *windowScene = (UIWindowScene *)scene;
+                if (windowScene.activationState == UISceneActivationStateForegroundActive) {
+                    return windowScene.windows.firstObject;
+                }
+            }
+        }
+    }
+    return nil;
+}
+
 static UITextView *YYCurrentInputTextView(UIViewController *vc) {
     if (vc.view) {
         UIView *v = YYFindSubview(vc.view, NSClassFromString(@"QQInputTextView"));
         if (v) return (UITextView *)v;
     }
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    UIWindow *window = YYKeyWindow();
     if (window) return YYFirstResponderTextView(window);
     return nil;
 }
@@ -50,13 +69,13 @@ static void YYShowAlert(NSString *title, NSString *message) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:title
         message:message preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-    UIViewController *top = [UIApplication sharedApplication].keyWindow.rootViewController;
+    UIViewController *top = YYKeyWindow().rootViewController;
     while (top.presentedViewController) top = top.presentedViewController;
     if (top) [top presentViewController:alert animated:YES completion:nil];
 }
 
 static void YYShowToast(NSString *message) {
-    UIWindow *window = [UIApplication sharedApplication].keyWindow;
+    UIWindow *window = YYKeyWindow();
     if (!window) return;
     UIView *toast = [[UIView alloc] initWithFrame:CGRectMake(0, 0, 190, 42)];
     toast.backgroundColor = [UIColor colorWithWhite:0 alpha:0.78];
