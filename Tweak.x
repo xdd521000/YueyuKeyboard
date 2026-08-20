@@ -14,6 +14,8 @@
 #import "YueyuTranslator.h"
 #import "YueyuSettings.h"
 
+static void YYOpenMenu(void);
+
 // QQInputAccessoryView 头文件声明（逆向头文件里是 UICollectionView 子类）
 @interface QQInputAccessoryView : UICollectionView
 @end
@@ -218,6 +220,10 @@ static NSInteger const kYYToolbarTag = 9527;
     }
 }
 
+- (void)menuTapped:(id)sender {
+    YYOpenMenu();
+}
+
 @end
 
 #pragma mark - Hook 1：发送拦截（翻译指令）
@@ -269,6 +275,7 @@ static void yyNewActionSend(id self, SEL _cmd) {
     UIView *existing = [self viewWithTag:kYYToolbarTag];
     if (!existing) {
         NSArray *defs = @[
+            @{ @"title": @"☰", @"sel": @"menuTapped:", @"w": @34 },
             @{ @"title": @"◀", @"sel": @"moveCaretLeft:", @"w": @30 },
             @{ @"title": @"▶", @"sel": @"moveCaretRight:", @"w": @30 },
             @{ @"title": @"复制", @"sel": @"copyTapped:", @"w": @52 },
@@ -316,4 +323,165 @@ static void yyNewActionSend(id self, SEL _cmd) {
         NSLog(@"[YueyuKeyboard] 未找到输入栏类，命令式翻译可能不生效");
     }
     NSLog(@"[YueyuKeyboard] 已加载 (键盘工具栏 v0.4：翻译/复制/左右移动)");
+}
+
+#pragma mark - QQ 内主菜单（键盘工具栏 ☰ 入口，无需系统设置）
+
+@interface YueyuMenuController : UIViewController <UITextFieldDelegate>
+@end
+
+@implementation YueyuMenuController {
+    UISwitch *_enableSwitch;
+    UISwitch *_toastSwitch;
+    UISwitch *_bothSwitch;
+    UISegmentedControl *_langSeg;
+    UITextField *_baiduIdField;
+    UITextField *_baiduKeyField;
+}
+
+- (NSUserDefaults *)yyPrefs {
+    return [[NSUserDefaults alloc] initWithSuiteName:@"com.yueyu.qqkeyboard"];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"越狱插件键盘";
+    self.view.backgroundColor = [UIColor colorWithWhite:0.96 alpha:1.0];
+    self.navigationItem.leftBarButtonItem = [[UIBarButtonItem alloc] initWithTitle:@"关闭" style:UIBarButtonItemStylePlain target:self action:@selector(closeTapped)];
+    self.navigationItem.rightBarButtonItem = [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemDone target:self action:@selector(closeTapped)];
+
+    NSUserDefaults *prefs = [self yyPrefs];
+    UIScrollView *scroll = [[UIScrollView alloc] initWithFrame:self.view.bounds];
+    scroll.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    [self.view addSubview:scroll];
+
+    CGFloat y = 16;
+
+    y = [self yyGroup:@"翻译行为" y:y in:scroll];
+
+    _enableSwitch = [[UISwitch alloc] init];
+    BOOL en = [prefs objectForKey:@"YYTranslateEnabled"] ? [prefs boolForKey:@"YYTranslateEnabled"] : YES;
+    [_enableSwitch setOn:en];
+    [_enableSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+    y = [self yyRow:@"启用翻译功能" control:_enableSwitch y:y in:scroll];
+
+    _toastSwitch = [[UISwitch alloc] init];
+    BOOL to = [prefs objectForKey:@"YYShowToast"] ? [prefs boolForKey:@"YYShowToast"] : YES;
+    [_toastSwitch setOn:to];
+    [_toastSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+    y = [self yyRow:@"显示“翻译中…”提示" control:_toastSwitch y:y in:scroll];
+
+    _bothSwitch = [[UISwitch alloc] init];
+    BOOL bo = [prefs objectForKey:@"YYSendBoth"] ? [prefs boolForKey:@"YYSendBoth"] : NO;
+    [_bothSwitch setOn:bo];
+    [_bothSwitch addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
+    y = [self yyRow:@"原文 + 译文一起发送" control:_bothSwitch y:y in:scroll];
+
+    NSArray *langTitles = @[@"自动", @"中文", @"英文", @"日文", @"韩文", @"法文", @"德文", @"俄文"];
+    _langSeg = [[UISegmentedControl alloc] initWithItems:langTitles];
+    _langSeg.frame = CGRectMake(0, 0, 210, 30);
+    _langSeg.selectedSegmentIndex = 0;
+    NSString *cur = [prefs stringForKey:@"YYDefaultTargetLang"];
+    NSArray *codes = @[@"auto", @"zh", @"en", @"ja", @"ko", @"fr", @"de", @"ru"];
+    for (NSUInteger i = 0; i < codes.count; i++) {
+        if ([cur isEqualToString:codes[i]]) { _langSeg.selectedSegmentIndex = i; break; }
+    }
+    [_langSeg addTarget:self action:@selector(langChanged:) forControlEvents:UIControlEventValueChanged];
+    y = [self yyRow:@"默认目标语言" control:_langSeg y:y in:scroll];
+
+    y += 6;
+
+    y = [self yyGroup:@"百度翻译（可选，不填自动用谷歌）" y:y in:scroll];
+
+    _baiduIdField = [self yyField:@"fanyi-api.baidu.com 申请" secure:NO text:[prefs stringForKey:@"YYBaiduAppID"]];
+    y = [self yyRow:@"百度 App ID" control:_baiduIdField y:y in:scroll];
+
+    _baiduKeyField = [self yyField:@"申请后获取" secure:YES text:[prefs stringForKey:@"YYBaiduSecretKey"]];
+    y = [self yyRow:@"百度密钥" control:_baiduKeyField y:y in:scroll];
+
+    y += 6;
+
+    y = [self yyGroup:@"用法" y:y in:scroll];
+
+    UILabel *use = [[UILabel alloc] initWithFrame:CGRectMake(16, y, self.view.bounds.size.width - 32, 80)];
+    use.numberOfLines = 0;
+    use.font = [UIFont systemFontOfSize:13];
+    use.textColor = [UIColor colorWithWhite:0.3 alpha:1.0];
+    use.text = @"命令：翻译:xx / #fy / #fyzh / #fyen / #fyja / #fyko / #fyfr / #fyde / #fyru\n工具栏：◀ ▶ 光标移动 ｜ 复制 ｜ 翻译 ｜ ☰ 菜单\n提示：填了百度 Key 用百度，没填自动用谷歌翻译。";
+    [scroll addSubview:use];
+    y += 96;
+
+    scroll.contentSize = CGSizeMake(self.view.bounds.size.width, y + 20);
+}
+
+- (void)closeTapped {
+    [self dismissViewControllerAnimated:YES completion:nil];
+}
+
+- (void)switchChanged:(UISwitch *)s {
+    NSString *key = (s == _enableSwitch) ? @"YYTranslateEnabled" : (s == _toastSwitch) ? @"YYShowToast" : @"YYSendBoth";
+    NSUserDefaults *p = [self yyPrefs];
+    [p setBool:s.on forKey:key];
+    [p synchronize];
+}
+
+- (void)langChanged:(UISegmentedControl *)seg {
+    static NSArray *codes = nil;
+    if (!codes) codes = @[@"auto", @"zh", @"en", @"ja", @"ko", @"fr", @"de", @"ru"];
+    NSUserDefaults *p = [self yyPrefs];
+    [p setObject:codes[seg.selectedSegmentIndex] forKey:@"YYDefaultTargetLang"];
+    [p synchronize];
+}
+
+- (void)textFieldDidEndEditing:(UITextField *)f {
+    NSUserDefaults *p = [self yyPrefs];
+    [p setObject:(f.text ?: @"") forKey:(f == _baiduIdField ? @"YYBaiduAppID" : @"YYBaiduSecretKey")];
+    [p synchronize];
+}
+
+- (UITextField *)yyField:(NSString *)ph secure:(BOOL)sec text:(NSString *)text {
+    UITextField *f = [[UITextField alloc] initWithFrame:CGRectMake(0, 0, 170, 30)];
+    f.borderStyle = UITextBorderStyleRoundedRect;
+    f.placeholder = ph;
+    f.secureTextEntry = sec;
+    f.font = [UIFont systemFontOfSize:14];
+    f.text = text ?: @"";
+    f.delegate = self;
+    return f;
+}
+
+- (CGFloat)yyGroup:(NSString *)title y:(CGFloat)y in:(UIScrollView *)scroll {
+    UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(16, y, 300, 20)];
+    l.text = title;
+    l.font = [UIFont systemFontOfSize:12 weight:UIFontWeightSemibold];
+    l.textColor = [UIColor colorWithRed:0.42 green:0.46 blue:0.55 alpha:1.0];
+    [scroll addSubview:l];
+    return y + 26;
+}
+
+- (CGFloat)yyRow:(NSString *)label control:(UIView *)control y:(CGFloat)y in:(UIScrollView *)scroll {
+    UILabel *l = [[UILabel alloc] initWithFrame:CGRectMake(16, y, 160, 34)];
+    l.text = label;
+    l.font = [UIFont systemFontOfSize:15];
+    l.textColor = [UIColor colorWithWhite:0.12 alpha:1.0];
+    [scroll addSubview:l];
+    CGRect f = control.frame;
+    f.origin = CGPointMake(self.view.bounds.size.width - f.size.width - 16, y + (34 - f.size.height) / 2);
+    control.frame = f;
+    [scroll addSubview:control];
+    return y + 42;
+}
+
+@end
+
+static void YYOpenMenu(void) {
+    UIWindow *window = YYKeyWindow();
+    if (!window) return;
+    UIViewController *top = window.rootViewController;
+    while (top.presentedViewController) top = top.presentedViewController;
+    if (!top) return;
+    YueyuMenuController *mc = [[YueyuMenuController alloc] init];
+    UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:mc];
+    nav.modalPresentationStyle = UIModalPresentationPageSheet;
+    [top presentViewController:nav animated:YES completion:nil];
 }
