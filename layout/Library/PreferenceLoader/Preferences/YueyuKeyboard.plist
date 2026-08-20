@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>entry</key>
+	<dict>
+		<key>bundle</key>
+		<string>YueyuKeyboardSettings</string>
+		<key>cell</key>
+		<string>PSLinkCell</string>
+		<key>label</key>
+		<string>越狱插件键盘</string>
+	</dict>
+</dict>
+</plist>
