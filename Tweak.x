@@ -1,14 +1,13 @@
-// 越狱插件键盘 - 翻译功能（v0.3）
+// 越狱插件键盘 - 键盘工具栏 v0.4
+// 功能：翻译 / 复制 / 左右移动光标
 // 依赖：YueyuTranslator.h/.m、YueyuSettings.h/.m（同目录）
-// 配置：iOS 设置 → 越狱插件键盘（百度 App ID/密钥、默认语言、开关）
+// 配置：iOS 设置 → 越狱插件键盘（百度翻译 Key、默认语言、开关）
 //
-// 用法（输入框输入后发送）：
-//   翻译:你好            → 按设置默认语言翻译（默认自动）
-//   #fy 你好             → 同上
-//   #fyzh hello          → 译为中文
-//   #fyen 你好           → 译为英文
-//   #fyja / #fyko / #fyfr / #fyde / #fyru  → 日/韩/法/德/俄
-// 或点输入附件栏「翻译」按钮，原地翻译输入框内容。
+// 用法：
+//   翻译：输入 翻译:xx / #fy / #fyzh / #fyen / #fyja / #fyko / #fyfr / #fyde / #fyru 后发送，
+//         或点附件栏「翻译」按钮原地翻译。
+//   复制：点「复制」按钮，复制输入框内容（有选中文字则复制选中部分）到剪贴板。
+//   移动：点「◀」「▶」按钮，光标左/右移动 1 个字符。
 
 #import <UIKit/UIKit.h>
 #import "YueyuTranslator.h"
@@ -92,7 +91,7 @@ static BOOL YYParseTranslateCommand(NSString *text, NSString **outSource, NSStri
     });
 
     NSString *source = nil;
-    NSString *target = @""; // 空 = 用设置默认/自动
+    NSString *target = @"";
 
     for (NSString *prefix in langCommands) {
         if ([text hasPrefix:prefix]) {
@@ -120,19 +119,22 @@ static BOOL YYParseTranslateCommand(NSString *text, NSString **outSource, NSStri
     return YES;
 }
 
-#pragma mark - 翻译按钮（方式 B：输入附件栏按钮）
+#pragma mark - 键盘工具栏（翻译 / 复制 / 左右移动光标）
 
-static NSInteger const kYYTranslateButtonTag = 9527;
+static NSInteger const kYYToolbarTag = 9527;
 
-@interface YueyuTranslateButtonHandler : NSObject
+@interface YueyuToolbarHandler : NSObject
 + (instancetype)sharedHandler;
 - (void)translateTapped:(id)sender;
+- (void)copyTapped:(id)sender;
+- (void)moveCaretLeft:(id)sender;
+- (void)moveCaretRight:(id)sender;
 @end
 
-@implementation YueyuTranslateButtonHandler
+@implementation YueyuToolbarHandler
 
 + (instancetype)sharedHandler {
-    static YueyuTranslateButtonHandler *handler = nil;
+    static YueyuToolbarHandler *handler = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{ handler = [[self alloc] init]; });
     return handler;
@@ -149,25 +151,63 @@ static NSInteger const kYYTranslateButtonTag = 9527;
     if ([YueyuSettings showToast]) YYShowToast(@"翻译中…");
     [[YueyuTranslator sharedInstance] translateText:original completion:^(NSString *result, NSError *error) {
         if (result.length) {
-            textView.text = result; // 原地替换为译文
+            textView.text = result;
         } else {
             YYShowAlert(@"翻译失败", error ? error.localizedDescription : @"未知错误");
         }
     }];
 }
 
+- (void)copyTapped:(id)sender {
+    UITextView *textView = YYCurrentInputTextView(nil);
+    if (!textView || textView.text.length == 0) {
+        YYShowAlert(@"提示", @"输入框为空，没有可复制的内容");
+        return;
+    }
+    NSString *toCopy = textView.text;
+    NSRange sel = textView.selectedRange;
+    // 有选中文字 → 只复制选中的部分
+    if (sel.length > 0 && sel.location + sel.length <= textView.text.length) {
+        toCopy = [textView.text substringWithRange:sel];
+    }
+    [UIPasteboard generalPasteboard].string = toCopy;
+    if ([YueyuSettings showToast]) YYShowToast(@"已复制");
+}
+
+- (void)moveCaretLeft:(id)sender {
+    [self moveCaretBy:-1];
+}
+
+- (void)moveCaretRight:(id)sender {
+    [self moveCaretBy:1];
+}
+
+- (void)moveCaretBy:(NSInteger)delta {
+    UITextView *textView = YYCurrentInputTextView(nil);
+    if (!textView) return;
+    NSRange range = textView.selectedRange;
+    NSInteger pos = (NSInteger)range.location;
+    if (delta > 0) {
+        pos = MIN(pos + delta, (NSInteger)textView.text.length);
+    } else {
+        pos = MAX(0, pos + delta);
+    }
+    textView.selectedRange = NSMakeRange((NSUInteger)pos, 0);
+    if (!textView.isFirstResponder) {
+        [textView becomeFirstResponder];
+    }
+}
+
 @end
 
-#pragma mark - Hook 1：发送拦截（翻译指令，方式 A）
+#pragma mark - Hook 1：发送拦截（翻译指令）
 
 static BOOL yyTranslating = NO;
 
 %hook NTAIOChat.NTAIOShortcutBarItemInputBarViewController
 
 - (void)actionSend {
-    // 翻译完成后的二次发送直接放行
     if (yyTranslating) { %orig; return; }
-    // 设置里关闭了翻译功能 → 原样发送
     if (![YueyuSettings translateEnabled]) { %orig; return; }
 
     UITextView *textView = YYCurrentInputTextView(self);
@@ -178,23 +218,21 @@ static BOOL yyTranslating = NO;
     if (!YYParseTranslateCommand(textView.text, &source, &target)) { %orig; return; }
 
     yyTranslating = YES;
-    // 先把命令文本替换成原文，翻译失败时也不至于把 "#fy..." 发出去
     textView.text = source;
     if ([YueyuSettings showToast]) YYShowToast(@"翻译中…");
 
     void (^handler)(NSString *, NSError *) = ^(NSString *result, NSError *error) {
         if (result.length) {
             if ([YueyuSettings sendBoth]) {
-                // 原文 + 译文一起发（一条气泡，上下两段）
                 textView.text = [NSString stringWithFormat:@"%@\n\n%@", source, result];
             } else {
                 textView.text = result;
             }
         } else {
             YYShowAlert(@"翻译失败", error ? error.localizedDescription : @"未知错误");
-            textView.text = source; // 失败时发送原文
+            textView.text = source;
         }
-        %orig; // 触发 QQ 发送当前文本
+        %orig;
         yyTranslating = NO;
     };
 
@@ -203,38 +241,53 @@ static BOOL yyTranslating = NO;
 
 %end
 
-#pragma mark - Hook 2：输入附件栏加「翻译」按钮（方式 B）
+#pragma mark - Hook 2：输入附件栏加工具栏（◀ ▶ 复制 翻译）
 
 %hook QQInputAccessoryView
 
 - (void)layoutSubviews {
     %orig;
-    UIButton *btn = (UIButton *)[self viewWithTag:kYYTranslateButtonTag];
-    if (!btn) {
-        btn = [UIButton buttonWithType:UIButtonTypeSystem];
-        btn.tag = kYYTranslateButtonTag;
-        [btn setTitle:@"翻译" forState:UIControlStateNormal];
-        [btn setTitleColor:[UIColor colorWithRed:0.04 green:0.37 blue:0.82 alpha:1] forState:UIControlStateNormal];
-        btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-        btn.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
-        btn.layer.cornerRadius = 6;
-        btn.translatesAutoresizingMaskIntoConstraints = NO;
-        [btn addTarget:[YueyuTranslateButtonHandler sharedHandler]
-                action:@selector(translateTapped:)
-      forControlEvents:UIControlEventTouchUpInside];
-        [self addSubview:btn];
+    UIView *existing = [self viewWithTag:kYYToolbarTag];
+    if (!existing) {
+        NSArray *defs = @[
+            @{ @"title": @"◀", @"sel": @"moveCaretLeft:", @"w": @30 },
+            @{ @"title": @"▶", @"sel": @"moveCaretRight:", @"w": @30 },
+            @{ @"title": @"复制", @"sel": @"copyTapped:", @"w": @52 },
+            @{ @"title": @"翻译", @"sel": @"translateTapped:", @"w": @52 }
+        ];
+
+        UIStackView *bar = [[UIStackView alloc] init];
+        bar.tag = kYYToolbarTag;
+        bar.axis = UILayoutConstraintAxisHorizontal;
+        bar.spacing = 6;
+        bar.translatesAutoresizingMaskIntoConstraints = NO;
+
+        YueyuToolbarHandler *handler = [YueyuToolbarHandler sharedHandler];
+        for (NSDictionary *d in defs) {
+            UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+            [btn setTitle:d[@"title"] forState:UIControlStateNormal];
+            [btn setTitleColor:[UIColor colorWithRed:0.04 green:0.37 blue:0.82 alpha:1] forState:UIControlStateNormal];
+            btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+            btn.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
+            btn.layer.cornerRadius = 6;
+            btn.translatesAutoresizingMaskIntoConstraints = NO;
+            [btn.widthAnchor constraintEqualToConstant:[d[@"w"] doubleValue]].active = YES;
+            [btn.heightAnchor constraintEqualToConstant:28].active = YES;
+            [btn addTarget:handler action:NSSelectorFromString(d[@"sel"]) forControlEvents:UIControlEventTouchUpInside];
+            [bar addArrangedSubview:btn];
+        }
+
+        [self addSubview:bar];
         [NSLayoutConstraint activateConstraints:@[
-            [btn.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-            [btn.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
-            [btn.widthAnchor constraintGreaterThanOrEqualToConstant:52],
-            [btn.heightAnchor constraintEqualToConstant:28]
+            [bar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+            [bar.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
         ]];
     }
-    [self bringSubviewToFront:btn];
+    [self bringSubviewToFront:existing];
 }
 
 %end
 
 %ctor {
-    NSLog(@"[YueyuKeyboard] 已加载 (翻译功能 v0.3，百度优先 + 设置页)");
+    NSLog(@"[YueyuKeyboard] 已加载 (键盘工具栏 v0.4：翻译/复制/左右移动)");
 }
