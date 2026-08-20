@@ -1,0 +1,27 @@
+name: build-deb
+
+on:
+  workflow_dispatch:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Theos
+        uses: theos/setup-theos@v1
+        with:
+          sdk: '16.5'
+
+      - name: Build deb
+        run: make package
+
+      - name: Upload deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: YueyuKeyboard-deb
+          path: packages/*.deb
