@@ -1,12 +1,10 @@
-// 越狱插件键盘 - 翻译功能（v0.1）
+// 越狱插件键盘 - 翻译功能（v0.2）
 // 依赖：YueyuTranslator.h / YueyuTranslator.m（同目录）
 //
-// 用法：在 QQ 输入框输入以下指令后直接发送：
-//   翻译:你好           → 自动译为英文并发送
-//   #fy 你好            → 同上
-//   #fyzh hello         → 强制译为中文并发送
-//   #fyen 你好          → 强制译为英文并发送
-// 翻译成功后发送译文；失败则弹提示并发送原文（不会丢失内容）。
+// 两种使用方式：
+//   A. 命令式：输入翻译指令后发送（稳定入口）
+//       翻译:你好    #fy 你好    #fyzh hello    #fyen 你好
+//   B. 按钮式：QQ 输入附件栏最右侧新增「翻译」按钮，点一下把输入框内容原地翻译
 
 #import <UIKit/UIKit.h>
 #import "YueyuTranslator.h"
@@ -82,7 +80,43 @@ static BOOL YYParseTranslateCommand(NSString *text, NSString **outSource, NSStri
     return YES;
 }
 
-#pragma mark - Hook：发送拦截（翻译指令）
+#pragma mark - 翻译按钮（方式 B：输入附件栏按钮）
+
+static NSInteger const kYYTranslateButtonTag = 9527;
+
+@interface YueyuTranslateButtonHandler : NSObject
++ (instancetype)sharedHandler;
+- (void)translateTapped:(id)sender;
+@end
+
+@implementation YueyuTranslateButtonHandler
+
++ (instancetype)sharedHandler {
+    static YueyuTranslateButtonHandler *handler = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{ handler = [[self alloc] init]; });
+    return handler;
+}
+
+- (void)translateTapped:(id)sender {
+    UITextView *textView = YYCurrentInputTextView(nil);
+    if (!textView || textView.text.length == 0) {
+        YYShowAlert(@"提示", @"输入框为空，没有可翻译的内容");
+        return;
+    }
+    NSString *original = textView.text;
+    [[YueyuTranslator sharedInstance] translateText:original completion:^(NSString *result, NSError *error) {
+        if (result.length) {
+            textView.text = result; // 原地替换为译文
+        } else {
+            YYShowAlert(@"翻译失败", error ? error.localizedDescription : @"未知错误");
+        }
+    }];
+}
+
+@end
+
+#pragma mark - Hook 1：发送拦截（翻译指令，方式 A）
 
 static BOOL yyTranslating = NO;
 
@@ -123,46 +157,38 @@ static BOOL yyTranslating = NO;
 
 %end
 
-#pragma mark - （可选）在输入附件栏加"翻译"按钮
-// 布局需真机调试，默认注释掉。若启用：点按钮 = 把输入框当前内容原地翻译（不自动发送）。
-/*
+#pragma mark - Hook 2：输入附件栏加「翻译」按钮（方式 B）
+
 %hook QQInputAccessoryView
-+ (id)defaultInputAccessoryView {
-    UICollectionView *view = %orig;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+
+- (void)layoutSubviews {
+    %orig;
+    UIButton *btn = (UIButton *)[self viewWithTag:kYYTranslateButtonTag];
+    if (!btn) {
+        btn = [UIButton buttonWithType:UIButtonTypeSystem];
+        btn.tag = kYYTranslateButtonTag;
         [btn setTitle:@"翻译" forState:UIControlStateNormal];
         [btn setTitleColor:[UIColor colorWithRed:0.04 green:0.37 blue:0.82 alpha:1] forState:UIControlStateNormal];
         btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-        btn.tag = 9527;
+        btn.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
+        btn.layer.cornerRadius = 6;
         btn.translatesAutoresizingMaskIntoConstraints = NO;
-        [btn addTarget:self action:@selector(yyTranslateTapped) forControlEvents:UIControlEventTouchUpInside];
-        [view addSubview:btn];
+        [btn addTarget:[YueyuTranslateButtonHandler sharedHandler]
+                action:@selector(translateTapped:)
+      forControlEvents:UIControlEventTouchUpInside];
+        [self addSubview:btn];
         [NSLayoutConstraint activateConstraints:@[
-            [btn.trailingAnchor constraintEqualToAnchor:view.trailingAnchor constant:-8],
-            [btn.centerYAnchor constraintEqualToAnchor:view.centerYAnchor]
+            [btn.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+            [btn.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [btn.widthAnchor constraintGreaterThanOrEqualToConstant:52],
+            [btn.heightAnchor constraintEqualToConstant:28]
         ]];
-    });
-    return view;
+    }
+    [self bringSubviewToFront:btn];
 }
+
 %end
 
-// 按钮点击：原地翻译输入框内容
-static void YYTranslateInPlace(void) {
-    UITextView *textView = YYCurrentInputTextView(nil);
-    if (!textView || textView.text.length == 0) { YYShowAlert(@"提示", @"输入框为空"); return; }
-    NSString *original = textView.text;
-    [[YueyuTranslator sharedInstance] translateText:original completion:^(NSString *result, NSError *error) {
-        if (result.length) {
-            textView.text = result;
-        } else {
-            YYShowAlert(@"翻译失败", error ? error.localizedDescription : @"未知错误");
-        }
-    }];
-}
-*/
-
 %ctor {
-    NSLog(@"[YueyuKeyboard] 已加载 (翻译功能 v0.1)");
+    NSLog(@"[YueyuKeyboard] 已加载 (翻译功能 v0.2，命令式 + 按钮式)");
 }

@@ -6,27 +6,26 @@
 
 ## 项目目标
 给 QQ 聊天输入框注入自定义键盘 / 键盘扩展。
-（具体功能：翻译已实现，其余候选：快捷短语 / 自定义表情 / 快捷指令 / 增强开关）
+（翻译已实现 v0.2；候选：快捷短语 / 自定义表情 / 快捷指令 / 增强开关）
 
 ## 已实现功能
 
-### 翻译（v0.1）
-- 在 QQ 输入框输入翻译指令后发送，插件自动翻译并发送译文。
-- 指令：
+### 翻译（v0.2，命令式 + 按钮式）
+- 方式 A（命令式）：输入指令后发送，插件自动翻译并发送译文。
   | 指令 | 效果 |
   |------|------|
-  | `翻译:你好` | 自动判断语言并翻译（中文→英文，英文→中文） |
-  | `#fy 你好` | 同上 |
+  | `翻译:你好` / `#fy 你好` | 自动判断语言（中文→英文，英文→中文） |
   | `#fyzh hello` | 强制译为中文 |
   | `#fyen 你好` | 强制译为英文 |
-- 翻译失败时弹窗提示并发送原文，不丢失内容。
+- 方式 B（按钮式）：QQ 输入附件栏最右侧「翻译」按钮，点击把输入框内容原地翻译。
+- 翻译失败：命令式发送原文、按钮式弹窗提示，不丢内容。
 - 翻译引擎：`YueyuTranslator.h/.m`（无需 API Key 的公开端点，可替换为百度/DeepL）。
-- Hook 点：`NTAIOShortcutBarItemInputBarViewController -actionSend`（基于 9.3.35 头文件，真机验证时可能需微调）。
+- Hook 点：`NTAIOShortcutBarItemInputBarViewController -actionSend` + `QQInputAccessoryView`（基于 9.3.35 头文件，真机验证时可能需微调）。
 
 ## 当前状态
 - [x] 项目骨架搭建（Theos 结构 + 辅助脚本 + 逆向参考索引）
-- [x] 翻译功能逻辑代码（未真机编译验证）
-- [ ] 编译出 deb 并真机测试
+- [x] 翻译功能代码（命令式 + 按钮式，未真机编译验证）
+- [ ] 编译出 deb 并真机测试（测试清单：`work/真机测试清单.md`）
 - [ ] 其他功能：快捷短语 / 自定义表情 / 快捷指令 / 增强开关
 
 ## 目录结构
@@ -35,7 +34,7 @@
 ├── README.md                 # 本文件
 ├── control                   # 包元数据（deb）
 ├── Makefile                  # Theos 构建脚本
-├── Tweak.x                   # Logos 钩子（翻译功能）
+├── Tweak.x                   # Logos 钩子（翻译功能 v0.2）
 ├── YueyuTranslator.h/.m      # 翻译引擎
 ├── layout/                   # 打包后安装到设备的文件
 │   └── Library/MobileSubstrate/DynamicLibraries/
@@ -45,7 +44,7 @@
 │   └── extract_headers.ps1   # 把匹配的头文件解压出来
 ├── References/               # 逆向参考
 │   └── QQ9.3.35-键盘相关类.md
-├── work/                     # 中间产物（草稿、笔记、日志）
+├── work/                     # 中间产物（草稿、笔记、日志、测试清单）
 └── outputs/                  # 最终交付物（deb、截图等）
 ```
 
@@ -57,7 +56,7 @@
 1. 用 `Scripts\search_header.ps1 关键词` 在头文件包里找目标类
 2. 用 `Scripts\extract_headers.ps1 关键词` 解压相关头文件到 `References\`
 3. 在 `Tweak.x` 里写 `%hook`，`make package` 出 deb
-4. 安装到设备测试，截图存 `outputs\`
+4. 按 `work\真机测试清单.md` 真机测试，截图存 `outputs\`
 
 ## 约定
 - 遵循 `D:\gpt.ggit` 记忆库规则：中间产物放 `work/`，交付物放 `outputs/`
