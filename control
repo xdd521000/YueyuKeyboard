@@ -6,4 +6,4 @@ Description: QQ 自定义键盘插件（骨架版本）
 Maintainer: yueyu
 Author: yueyu
 Section: Tweaks
-Depends: mobilesubstrate (>= 0.9.5000)
+Depends: mobilesubstrate (>= 0.9.5000), preferenceloader
