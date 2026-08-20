@@ -10,6 +10,7 @@
 //   移动：点「◀」「▶」按钮，光标左/右移动 1 个字符。
 
 #import <UIKit/UIKit.h>
+#import <substrate.h>
 #import "YueyuTranslator.h"
 #import "YueyuSettings.h"
 
@@ -204,18 +205,19 @@ static NSInteger const kYYToolbarTag = 9527;
 
 static BOOL yyTranslating = NO;
 
-%hook NTAIOChat.NTAIOShortcutBarItemInputBarViewController
+// Swift 类不能直接 %hook（Logos 警告会变错误且不可靠），改用运行时方法替换
+static void (*yyOrigActionSend)(id, SEL);
 
-- (void)actionSend {
-    if (yyTranslating) { %orig; return; }
-    if (![YueyuSettings translateEnabled]) { %orig; return; }
+static void yyNewActionSend(id self, SEL _cmd) {
+    if (yyTranslating) { yyOrigActionSend(self, _cmd); return; }
+    if (![YueyuSettings translateEnabled]) { yyOrigActionSend(self, _cmd); return; }
 
     UITextView *textView = YYCurrentInputTextView(self);
-    if (!textView) { %orig; return; }
+    if (!textView) { yyOrigActionSend(self, _cmd); return; }
 
     NSString *source = nil;
     NSString *target = nil;
-    if (!YYParseTranslateCommand(textView.text, &source, &target)) { %orig; return; }
+    if (!YYParseTranslateCommand(textView.text, &source, &target)) { yyOrigActionSend(self, _cmd); return; }
 
     yyTranslating = YES;
     textView.text = source;
@@ -232,14 +234,12 @@ static BOOL yyTranslating = NO;
             YYShowAlert(@"翻译失败", error ? error.localizedDescription : @"未知错误");
             textView.text = source;
         }
-        %orig;
+        yyOrigActionSend(self, _cmd);
         yyTranslating = NO;
     };
 
     [[YueyuTranslator sharedInstance] translateText:source toLanguage:target completion:handler];
 }
-
-%end
 
 #pragma mark - Hook 2：输入附件栏加工具栏（◀ ▶ 复制 翻译）
 
@@ -289,5 +289,12 @@ static BOOL yyTranslating = NO;
 %end
 
 %ctor {
+    // 拦截发送（Swift 类用运行时 hook）
+    Class inputBarCls = NSClassFromString(@"NTAIOChat.NTAIOShortcutBarItemInputBarViewController");
+    if (inputBarCls) {
+        MSHookMessageEx(inputBarCls, @selector(actionSend), (IMP)yyNewActionSend, (IMP *)&yyOrigActionSend);
+    } else {
+        NSLog(@"[YueyuKeyboard] 未找到输入栏类，命令式翻译可能不生效");
+    }
     NSLog(@"[YueyuKeyboard] 已加载 (键盘工具栏 v0.4：翻译/复制/左右移动)");
 }
