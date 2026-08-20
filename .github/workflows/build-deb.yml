@@ -21,7 +21,7 @@ jobs:
           THEOS: ${{ runner.temp }}/theos
         run: |
           git clone --recursive --depth 1 https://github.com/theos/theos.git "$THEOS"
-          curl -L -o /tmp/iphoneos16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/iPhoneOS16.5.sdk/iPhoneOS16.5.sdk.tar.xz
+          curl -fL -o /tmp/iphoneos16.5.sdk.tar.xz https://github.com/theos/sdks/releases/download/master-146e41f/iPhoneOS16.5.sdk.tar.xz
           mkdir -p "$THEOS/sdks"
           tar -xJf /tmp/iphoneos16.5.sdk.tar.xz -C "$THEOS/sdks"
           echo "THEOS=$THEOS" >> $GITHUB_ENV
