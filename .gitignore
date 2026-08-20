@@ -1,0 +1,13 @@
+# Theos 构建产物
+*.deb
+*.dylib
+.theos/
+packages/
+# 解压出来的头文件（可随时用脚本重新生成）
+References/QQ9.3.35-extracted/
+# 系统
+.DS_Store
+Thumbs.db
+# Xcode
+build/
+DerivedData/
