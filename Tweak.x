@@ -308,8 +308,8 @@ static void yyNewLayoutSubviews(id self, SEL _cmd) {
 
             [self addSubview:bar];
             [NSLayoutConstraint activateConstraints:@[
-                [bar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-                [bar.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
+                [bar.trailingAnchor constraintEqualToAnchor:((UIView *)self).trailingAnchor constant:-8],
+                [bar.centerYAnchor constraintEqualToAnchor:((UIView *)self).centerYAnchor]
             ]];
         }
         [self bringSubviewToFront:existing];
