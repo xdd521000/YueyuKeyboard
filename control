@@ -1,6 +1,6 @@
 Package: com.yueyu.qqkeyboard
 Name: 越狱插件键盘
-Version: 0.0.2
+Version: 0.0.3
 Architecture: iphoneos-arm64
 Description: QQ 自定义键盘插件（骨架版本）
 Maintainer: yueyu

@@ -268,61 +268,76 @@ static void yyNewActionSend(id self, SEL _cmd) {
 
 #pragma mark - Hook 2：输入附件栏加工具栏（◀ ▶ 复制 翻译）
 
-%hook QQInputAccessoryView
+static IMP yyOrigLayoutSubviews = NULL;
 
-- (void)layoutSubviews {
-    %orig;
-    UIView *existing = [self viewWithTag:kYYToolbarTag];
-    if (!existing) {
-        NSArray *defs = @[
-            @{ @"title": @"☰", @"sel": @"menuTapped:", @"w": @34 },
-            @{ @"title": @"◀", @"sel": @"moveCaretLeft:", @"w": @30 },
-            @{ @"title": @"▶", @"sel": @"moveCaretRight:", @"w": @30 },
-            @{ @"title": @"复制", @"sel": @"copyTapped:", @"w": @52 },
-            @{ @"title": @"翻译", @"sel": @"translateTapped:", @"w": @52 }
-        ];
-
-        UIStackView *bar = [[UIStackView alloc] init];
-        bar.tag = kYYToolbarTag;
-        bar.axis = UILayoutConstraintAxisHorizontal;
-        bar.spacing = 6;
-        bar.translatesAutoresizingMaskIntoConstraints = NO;
-
-        YueyuToolbarHandler *handler = [YueyuToolbarHandler sharedHandler];
-        for (NSDictionary *d in defs) {
-            UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
-            [btn setTitle:d[@"title"] forState:UIControlStateNormal];
-            [btn setTitleColor:[UIColor colorWithRed:0.04 green:0.37 blue:0.82 alpha:1] forState:UIControlStateNormal];
-            btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
-            btn.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
-            btn.layer.cornerRadius = 6;
-            btn.translatesAutoresizingMaskIntoConstraints = NO;
-            [btn.widthAnchor constraintEqualToConstant:[d[@"w"] doubleValue]].active = YES;
-            [btn.heightAnchor constraintEqualToConstant:28].active = YES;
-            [btn addTarget:handler action:NSSelectorFromString(d[@"sel"]) forControlEvents:UIControlEventTouchUpInside];
-            [bar addArrangedSubview:btn];
-        }
-
-        [self addSubview:bar];
-        [NSLayoutConstraint activateConstraints:@[
-            [bar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-            [bar.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
-        ]];
+static void yyNewLayoutSubviews(id self, SEL _cmd) {
+    if (yyOrigLayoutSubviews) {
+        ((void(*)(id, SEL))yyOrigLayoutSubviews)(self, _cmd);
     }
-    [self bringSubviewToFront:existing];
+    @autoreleasepool {
+        UIView *existing = [self viewWithTag:kYYToolbarTag];
+        if (!existing) {
+            NSArray *defs = @[
+                @{ @"title": @"☰", @"sel": @"menuTapped:", @"w": @34 },
+                @{ @"title": @"◀", @"sel": @"moveCaretLeft:", @"w": @30 },
+                @{ @"title": @"▶", @"sel": @"moveCaretRight:", @"w": @30 },
+                @{ @"title": @"复制", @"sel": @"copyTapped:", @"w": @52 },
+                @{ @"title": @"翻译", @"sel": @"translateTapped:", @"w": @52 }
+            ];
+
+            UIStackView *bar = [[UIStackView alloc] init];
+            bar.tag = kYYToolbarTag;
+            bar.axis = UILayoutConstraintAxisHorizontal;
+            bar.spacing = 6;
+            bar.translatesAutoresizingMaskIntoConstraints = NO;
+
+            YueyuToolbarHandler *handler = [YueyuToolbarHandler sharedHandler];
+            for (NSDictionary *d in defs) {
+                UIButton *btn = [UIButton buttonWithType:UIButtonTypeSystem];
+                [btn setTitle:d[@"title"] forState:UIControlStateNormal];
+                [btn setTitleColor:[UIColor colorWithRed:0.04 green:0.37 blue:0.82 alpha:1] forState:UIControlStateNormal];
+                btn.titleLabel.font = [UIFont systemFontOfSize:14 weight:UIFontWeightMedium];
+                btn.backgroundColor = [UIColor colorWithWhite:0.95 alpha:1];
+                btn.layer.cornerRadius = 6;
+                btn.translatesAutoresizingMaskIntoConstraints = NO;
+                [btn.widthAnchor constraintEqualToConstant:[d[@"w"] doubleValue]].active = YES;
+                [btn.heightAnchor constraintEqualToConstant:28].active = YES;
+                [btn addTarget:handler action:NSSelectorFromString(d[@"sel"]) forControlEvents:UIControlEventTouchUpInside];
+                [bar addArrangedSubview:btn];
+            }
+
+            [self addSubview:bar];
+            [NSLayoutConstraint activateConstraints:@[
+                [bar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+                [bar.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
+            ]];
+        }
+        [self bringSubviewToFront:existing];
+    }
 }
 
-%end
+static void YYInstallToolbarHook(void) {
+    Class cls = NSClassFromString(@"QQInputAccessoryView");
+    if (!cls) return;
+    Method m = class_getInstanceMethod(cls, @selector(layoutSubviews));
+    if (!m) return;
+    yyOrigLayoutSubviews = method_getImplementation(m);
+    method_setImplementation(m, (IMP)yyNewLayoutSubviews);
+}
 
-%ctor {
-    // 拦截发送（Swift 类用运行时 hook）
+static void YYInstallActionSendHook(void) {
     Class inputBarCls = NSClassFromString(@"NTAIOChat.NTAIOShortcutBarItemInputBarViewController");
-    if (inputBarCls) {
-        MSHookMessageEx(inputBarCls, @selector(actionSend), (IMP)yyNewActionSend, (IMP *)&yyOrigActionSend);
-    } else {
-        NSLog(@"[YueyuKeyboard] 未找到输入栏类，命令式翻译可能不生效");
-    }
-    NSLog(@"[YueyuKeyboard] 已加载 (键盘工具栏 v0.4：翻译/复制/左右移动)");
+    if (!inputBarCls) return;
+    Method m = class_getInstanceMethod(inputBarCls, @selector(actionSend));
+    if (!m) return;
+    yyOrigActionSend = (void (*)(id, SEL))method_getImplementation(m);
+    method_setImplementation(m, (IMP)yyNewActionSend);
+}
+
+__attribute__((constructor)) static void YYInit(void) {
+    YYInstallToolbarHook();
+    YYInstallActionSendHook();
+    NSLog(@"[YueyuKeyboard] 已加载 (纯运行时，不依赖越狱环境)");
 }
 
 #pragma mark - QQ 内主菜单（键盘工具栏 ☰ 入口，无需系统设置）
